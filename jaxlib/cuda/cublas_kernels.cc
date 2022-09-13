@@ -83,11 +83,6 @@ static absl::Status TrsmBatched_(cudaStream_t stream, void** buffers,
   auto h = BlasHandlePool::Borrow(stream);
   JAX_RETURN_IF_ERROR(h.status());
   auto& handle = *h;
-  if (buffers[2] != buffers[1]) {
-    JAX_RETURN_IF_ERROR(JAX_AS_STATUS(cudaMemcpyAsync(
-        buffers[2], buffers[1], SizeOfCublasType(d.type) * d.batch * d.m * d.n,
-        cudaMemcpyDeviceToDevice, stream)));
-  }
   const int lda = d.side == CUBLAS_SIDE_LEFT ? d.m : d.n;
   const int ldb = d.m;
   auto a_batch_host = MakeBatchPointers(stream, buffers[0], buffers[3], d.batch,

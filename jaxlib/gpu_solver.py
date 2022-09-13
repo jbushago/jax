@@ -98,7 +98,8 @@ def _trsm_mhlo(platform, gpu_blas, dtype, a, b, left_side=False, lower=False,
       [a, b],
       backend_config=opaque,
       operand_layouts=[layout] * 2,
-      result_layouts=[layout, work_layout, work_layout])
+      result_layouts=[layout, work_layout, work_layout],
+      operand_output_aliases={1: 0})
   return out[0]
 
 cuda_trsm = partial(_trsm_mhlo, "cu", _cublas)
