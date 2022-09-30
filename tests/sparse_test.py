@@ -31,6 +31,7 @@ from jax import dtypes
 from jax.experimental import sparse
 from jax.experimental.sparse import coo as sparse_coo
 from jax.experimental.sparse import bcoo as sparse_bcoo
+from jax.experimental.sparse import bcsr as sparse_bcsr
 from jax.experimental.sparse.bcoo import BCOOInfo
 from jax import lax
 from jax._src.lib import xla_extension_version
@@ -2500,6 +2501,39 @@ class SparseObjectTest(jtu.JaxTestCase):
     self.assertArraysEqual(M.sum(0), Msp.sum(0).todense())
     self.assertArraysEqual(M.sum(1), Msp.sum(1).todense())
     self.assertArraysEqual(M.sum(), Msp.sum())
+
+  @parameterized.named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_{}_nbatch={}_ndense={}".format(
+        jtu.format_shape_dtype_string(shape, dtype), n_batch, n_dense),
+       "shape": shape, "dtype": dtype, "n_batch": n_batch, "n_dense": n_dense}
+      for shape in [(5, 8), (8, 5), (3, 4, 5), (3, 4, 3, 2)]
+      for dtype in jtu.dtypes.floating + jtu.dtypes.complex
+      for n_batch in range(len(shape) - 1)
+      for n_dense in [len(shape) - 2 - n_batch]))
+  def test_bcoo_to_bcsr_round_trip(self, shape, dtype, n_batch, n_dense):
+    rng = rand_sparse(self.rng())
+    M = rng(shape, dtype)
+    nse = sparse.util._count_stored_elements(M, n_batch=n_batch,
+                                             n_dense=n_dense)
+    _, bcoo_indices = sparse_bcoo._bcoo_fromdense(M, nse=nse, n_batch=n_batch,
+                                                  n_dense=n_dense)
+
+    bcoo_to_bcsr = partial(sparse_bcoo._bcoo_to_bcsr, shape=shape)
+    bcsr_indices, indptr = bcoo_to_bcsr(bcoo_indices)
+    bcsr_indices_jit, indptr_jit = jit(bcoo_to_bcsr)(bcoo_indices)
+
+    self.assertArraysEqual(bcsr_indices, bcsr_indices_jit)
+    self.assertArraysEqual(indptr, indptr_jit)
+
+    self.assertEqual(bcsr_indices.dtype, jnp.int32)
+    self.assertEqual(bcsr_indices.shape, shape[:n_batch] + (nse,))
+    self.assertEqual(indptr.dtype, jnp.int32)
+    self.assertEqual(indptr.shape, shape[:n_batch] + (shape[n_batch] + 1,))
+
+    bcsr_to_bcoo = partial(sparse_bcsr._bcsr_to_bcoo, shape=shape)
+    self.assertArraysEqual(bcoo_indices, bcsr_to_bcoo(bcsr_indices, indptr))
+    self.assertArraysEqual(bcoo_indices,
+                           jit(bcsr_to_bcoo)(bcsr_indices, indptr))
 
 
 class SparseRandomTest(jtu.JaxTestCase):
